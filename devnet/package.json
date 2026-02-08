@@ -1,0 +1,17 @@
+{
+  "name": "midnight-devnet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/start.ts",
+    "stop": "tsx src/stop.ts"
+  },
+  "dependencies": {
+    "@no-witness-labs/midday-sdk": "^0.2.13"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
