@@ -96,9 +96,11 @@ Each directory (`app/`, `devnet/`) is a standalone package with its own `package
 
 ## Fee Relay
 
-By default, the **fee relay** is enabled. This means the devnet genesis wallet pays transaction fees (dust) on behalf of users, so they don't need dust to interact with contracts.
+On Midnight, every transaction requires a small amount of **dust** (tDUST on devnet) to pay fees. On a local devnet, only the genesis wallet has dust — new wallets start with zero balance and can't submit transactions.
 
-Uncheck "Use Fee Relay" before connecting to pay fees with your own wallet's dust.
+The **fee relay** solves this by using the genesis wallet to pay fees on behalf of users. This way users can deploy and call contracts immediately without needing to acquire dust first.
+
+The fee relay is enabled by default. Uncheck "Use Fee Relay" before connecting to pay fees with your own wallet's dust.
 
 ## Networks
 
