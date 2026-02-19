@@ -4,6 +4,7 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { resolve } from 'path';
 import { readFile } from 'fs/promises';
+import { readdirSync, readFileSync } from 'fs';
 
 /**
  * Vite plugin to serve ZK config artifacts with the URL pattern expected by HttpZkConfigProvider.
@@ -16,6 +17,35 @@ import { readFile } from 'fs/promises';
 function zkConfigMiddleware(contractPath: string): Plugin {
   return {
     name: 'zk-config-middleware',
+    generateBundle() {
+      const zkirDir = resolve(contractPath, 'zkir');
+      const keysDir = resolve(contractPath, 'keys');
+
+      for (const file of readdirSync(zkirDir)) {
+        if (!file.endsWith('.bzkir')) continue;
+        const circuitId = file.replace('.bzkir', '');
+
+        this.emitFile({
+          type: 'asset',
+          fileName: `zk-config/${circuitId}/zkir`,
+          source: readFileSync(resolve(zkirDir, file)),
+        });
+
+        const proverPath = resolve(keysDir, `${circuitId}.prover`);
+        this.emitFile({
+          type: 'asset',
+          fileName: `zk-config/${circuitId}/prover-key`,
+          source: readFileSync(proverPath),
+        });
+
+        const verifierPath = resolve(keysDir, `${circuitId}.verifier`);
+        this.emitFile({
+          type: 'asset',
+          fileName: `zk-config/${circuitId}/verifier-key`,
+          source: readFileSync(verifierPath),
+        });
+      }
+    },
     configureServer(server) {
       server.middlewares.use('/zk-config', async (req, res, next) => {
         const url = req.url || '';
