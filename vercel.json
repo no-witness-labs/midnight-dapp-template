@@ -1,5 +1,5 @@
 {
-  "installCommand": "corepack enable pnpm && cd app && pnpm install",
+  "installCommand": "npm i -g pnpm@9.15.9 && cd app && pnpm install",
   "buildCommand": "cd app && pnpm build",
   "outputDirectory": "app/dist"
 }
