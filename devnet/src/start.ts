@@ -57,14 +57,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Error:', error);
-  // Unwrap Effect FiberFailure / TaggedError chain to find the actual Docker error
-  let e: unknown = error;
-  let depth = 0;
-  while (e && typeof e === 'object' && 'cause' in e && depth < 10) {
-    e = (e as { cause: unknown }).cause;
-    depth++;
-    console.error(`\n${'  '.repeat(depth)}Cause [${depth}]:`, e);
-  }
+  // Effect FiberFailure stores cause under a Symbol, so use console.dir for full inspection
+  console.dir(error, { depth: 10 });
   process.exit(1);
 });
