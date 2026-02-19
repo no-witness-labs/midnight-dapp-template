@@ -58,12 +58,13 @@ async function main() {
 
 main().catch((error) => {
   console.error('Error:', error);
-  if (error && typeof error === 'object' && 'cause' in error) {
-    const cause = (error as { cause: unknown }).cause;
-    console.error('\nRoot cause:', cause);
-    if (cause && typeof cause === 'object' && 'cause' in cause) {
-      console.error('Nested cause:', (cause as { cause: unknown }).cause);
-    }
+  // Unwrap Effect FiberFailure / TaggedError chain to find the actual Docker error
+  let e: unknown = error;
+  let depth = 0;
+  while (e && typeof e === 'object' && 'cause' in e && depth < 10) {
+    e = (e as { cause: unknown }).cause;
+    depth++;
+    console.error(`\n${'  '.repeat(depth)}Cause [${depth}]:`, e);
   }
   process.exit(1);
 });
