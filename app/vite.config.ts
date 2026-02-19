@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { resolve } from 'path';
 import { readFile } from 'fs/promises';
 
@@ -58,20 +59,60 @@ function zkConfigMiddleware(contractPath: string): Plugin {
 const contractsDir = resolve(__dirname, '../contracts/counter');
 
 export default defineConfig({
-  plugins: [wasm(), topLevelAwait(), zkConfigMiddleware(contractsDir)],
+  plugins: [
+    nodePolyfills({ include: ['buffer', 'process'] }),
+    wasm(),
+    topLevelAwait(),
+    zkConfigMiddleware(contractsDir),
+  ],
   build: {
     target: 'esnext',
   },
+  resolve: {
+    alias: {
+      // The contract at ../contracts/counter/ imports compact-runtime but lives
+      // outside app/ with no node_modules. Alias ensures Vite resolves it from here.
+      '@midnight-ntwrk/compact-runtime': resolve(
+        __dirname,
+        'node_modules/@midnight-ntwrk/compact-runtime/dist/index.js',
+      ),
+    },
+  },
   optimizeDeps: {
-    // Pre-bundle compact-runtime (used by the contract) so esbuild converts
-    // its CJS deps to ESM and vite-plugin-wasm handles its WASM imports.
+    // WASM packages must be pre-bundled separately so vite-plugin-wasm can
+    // process them (esbuild can't handle top-level-await WASM in require() chains).
     include: [
+      '@midnight-ntwrk/ledger-v7',
       '@midnight-ntwrk/compact-runtime',
     ],
+    esbuildOptions: {
+      plugins: [
+        {
+          // @midnight-ntwrk/midnight-js-* v3 packages ship broken CJS entries
+          // (missing files, WASM top-level-await). When esbuild encounters them
+          // via require(), force ESM resolution so the working import entries are used.
+          name: 'force-esm-midnight',
+          setup(build) {
+            build.onResolve({ filter: /^@midnight-ntwrk\/midnight-js-/ }, async (args) => {
+              if (args.kind === 'require-call') {
+                return build.resolve(args.path, {
+                  resolveDir: args.resolveDir,
+                  kind: 'import-statement',
+                });
+              }
+            });
+          },
+        },
+      ],
+    },
   },
   server: {
     fs: {
-      allow: ['.', resolve(__dirname, '../contracts')],
+      allow: [
+        '.',
+        resolve(__dirname, '../contracts'),
+        resolve(__dirname, '../../midday-sdk'),
+      ],
     },
   },
 });

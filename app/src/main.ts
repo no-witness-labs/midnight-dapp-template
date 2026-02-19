@@ -11,9 +11,6 @@
 import * as Midday from '@no-witness-labs/midday-sdk';
 import * as CounterContract from '../../contracts/counter/contract/index.js';
 
-// Store connected wallet API for balance queries
-let connectedApi: Midday.BrowserWallet.ConnectedAPI | null = null;
-
 // UI Elements
 const networkSelect = document.getElementById('network-select') as HTMLSelectElement;
 const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement;
@@ -23,10 +20,9 @@ const actionsDiv = document.getElementById('actions') as HTMLDivElement;
 const counterDiv = document.getElementById('counter-value') as HTMLDivElement;
 
 // State
+let wallet: Midday.Wallet.ConnectedWallet | null = null;
 let client: Midday.Client.MiddayClient | null = null;
-let contract: Midday.Client.Contract | null = null;
-let lacePublicKey: string = '';
-let laceEncryptionKey: string = '';
+let contract: Midday.Contract.DeployedContract | null = null;
 
 // Update status display
 function updateStatus(message: string, isError = false) {
@@ -49,24 +45,23 @@ async function connectWallet() {
     connectBtn.disabled = true;
 
     const network = networkSelect?.value || 'undeployed';
-    const connection = await Midday.BrowserWallet.connectWallet(network as 'preview' | 'undeployed');
+    wallet = await Midday.Wallet.fromBrowser(network);
 
     updateStatus('Creating SDK client...');
 
     const useFeeRelay = (document.getElementById('fee-relay-checkbox') as HTMLInputElement).checked;
+    const networkName = network === 'undeployed' ? 'local' : network;
 
-    client = await Midday.Client.fromWallet(connection, {
+    client = await Midday.Client.create({
+      network: networkName,
+      wallet,
       privateStateProvider: Midday.PrivateState.indexedDBPrivateStateProvider({
         privateStateStoreName: 'midnight-dapp-counter',
       }),
       ...(useFeeRelay ? { feeRelay: { url: 'http://localhost:3002' } } : {}),
     });
 
-    connectedApi = connection.wallet;
-    lacePublicKey = connection.addresses.shieldedCoinPublicKey;
-    laceEncryptionKey = connection.addresses.shieldedEncryptionPublicKey;
-
-    addressDiv.textContent = `Connected: ${lacePublicKey.slice(0, 16)}...`;
+    addressDiv.textContent = `Connected: ${wallet.coinPublicKey.slice(0, 16)}...`;
     addressDiv.style.display = 'block';
     actionsDiv.style.display = 'block';
 
@@ -93,14 +88,14 @@ async function deployContract() {
 
     const zkConfigUrl = '/zk-config';
 
-    contract = await client.loadContract({
+    const loaded = await client.loadContract({
       module: CounterContract,
       zkConfig: new Midday.ZkConfig.HttpZkConfigProvider(zkConfigUrl),
       privateStateId: 'midnight-dapp-counter',
     });
 
     updateStatus('Deploying contract...');
-    await contract.deploy();
+    contract = await loaded.deploy();
 
     updateStatus(`Contract deployed at: ${contract.address}`);
     updateCounter('0');
@@ -119,7 +114,7 @@ async function callAction() {
 
   try {
     updateStatus('Calling increment...');
-    const result = await contract.call('increment');
+    const result = await contract.actions.increment();
     updateStatus(`TX submitted: ${result.txHash.slice(0, 16)}...`);
 
     await readState();
@@ -157,7 +152,7 @@ function formatBalance(value: bigint): string {
 
 // Refresh and display wallet balances
 async function refreshBalance() {
-  if (!connectedApi) {
+  if (!wallet) {
     updateStatus('Not connected - connect wallet first', true);
     return;
   }
@@ -165,16 +160,12 @@ async function refreshBalance() {
   try {
     updateStatus('Fetching balances...');
 
-    const [shielded, unshielded, dust] = await Promise.all([
-      connectedApi.getShieldedBalances(),
-      connectedApi.getUnshieldedBalances(),
-      connectedApi.getDustBalance(),
-    ]);
+    const balance = await wallet.getBalance();
 
-    const shieldedKeys = Object.keys(shielded);
-    const unshieldedKeys = Object.keys(unshielded);
-    const shieldedNative = shielded[''] ?? (shieldedKeys.length > 0 ? shielded[shieldedKeys[0]] : 0n);
-    const unshieldedNative = unshielded[''] ?? (unshieldedKeys.length > 0 ? unshielded[unshieldedKeys[0]] : 0n);
+    const shieldedKeys = Object.keys(balance.shielded);
+    const unshieldedKeys = Object.keys(balance.unshielded);
+    const shieldedNative = balance.shielded[''] ?? (shieldedKeys.length > 0 ? balance.shielded[shieldedKeys[0]] : 0n);
+    const unshieldedNative = balance.unshielded[''] ?? (unshieldedKeys.length > 0 ? balance.unshielded[unshieldedKeys[0]] : 0n);
 
     const balanceInfo = document.getElementById('balance-info');
     const shieldedEl = document.getElementById('shielded-balance');
@@ -185,8 +176,8 @@ async function refreshBalance() {
     if (balanceInfo) balanceInfo.style.display = 'block';
     if (shieldedEl) shieldedEl.textContent = formatBalance(shieldedNative);
     if (unshieldedEl) unshieldedEl.textContent = formatBalance(unshieldedNative);
-    if (dustBalanceEl) dustBalanceEl.textContent = formatBalance(dust.balance);
-    if (dustCapEl) dustCapEl.textContent = formatBalance(dust.cap);
+    if (dustBalanceEl) dustBalanceEl.textContent = formatBalance(balance.dust.balance);
+    if (dustCapEl) dustCapEl.textContent = formatBalance(balance.dust.cap);
 
     updateStatus('Balances updated');
   } catch (error) {
@@ -197,7 +188,7 @@ async function refreshBalance() {
 
 // Fund wallet via faucet
 async function fundWallet() {
-  if (!lacePublicKey || !laceEncryptionKey) {
+  if (!wallet) {
     updateStatus('Not connected - connect wallet first', true);
     return;
   }
@@ -209,8 +200,8 @@ async function fundWallet() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        coinPublicKey: lacePublicKey,
-        encryptionPublicKey: laceEncryptionKey,
+        coinPublicKey: wallet.coinPublicKey,
+        encryptionPublicKey: wallet.encryptionPublicKey,
       }),
     });
 
