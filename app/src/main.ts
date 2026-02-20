@@ -52,13 +52,22 @@ async function connectWallet() {
     const useFeeRelay = (document.getElementById('fee-relay-checkbox') as HTMLInputElement).checked;
     const networkName = network === 'undeployed' ? 'local' : network;
 
+    const networkConfig = Midday.Config.getNetworkConfig(networkName);
+
+    // Fee relay: use URL from input
+    let feeRelayConfig: { url: string } | undefined;
+    if (useFeeRelay) {
+      const urlInput = document.getElementById('fee-relay-url') as HTMLInputElement;
+      feeRelayConfig = { url: urlInput?.value.trim() || 'http://localhost:3002' };
+    }
+
     client = await Midday.Client.create({
-      network: networkName,
+      networkConfig,
       wallet,
       privateStateProvider: Midday.PrivateState.indexedDBPrivateStateProvider({
         privateStateStoreName: 'midnight-dapp-counter',
       }),
-      ...(useFeeRelay ? { feeRelay: { url: 'http://localhost:3002' } } : {}),
+      ...(feeRelayConfig ? { feeRelay: feeRelayConfig } : {}),
     });
 
     addressDiv.textContent = `Connected: ${wallet.coinPublicKey.slice(0, 16)}...`;
@@ -228,6 +237,15 @@ connectBtn.addEventListener('click', connectWallet);
 (window as unknown as { readState: typeof readState }).readState = readState;
 (window as unknown as { refreshBalance: typeof refreshBalance }).refreshBalance = refreshBalance;
 (window as unknown as { fundWallet: typeof fundWallet }).fundWallet = fundWallet;
+
+// Show/hide fee relay URL input when checkbox is toggled
+const feeRelayCheckbox = document.getElementById('fee-relay-checkbox') as HTMLInputElement;
+const feeRelayUrlInput = document.getElementById('fee-relay-url') as HTMLInputElement;
+function updateFeeRelayUI() {
+  feeRelayUrlInput.style.display = feeRelayCheckbox.checked ? 'block' : 'none';
+}
+feeRelayCheckbox.addEventListener('change', updateFeeRelayUI);
+updateFeeRelayUI();
 
 // Initial status
 updateStatus('Select network and click "Connect Wallet" to begin');
