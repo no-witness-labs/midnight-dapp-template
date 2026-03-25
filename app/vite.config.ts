@@ -163,23 +163,7 @@ export default defineConfig({
       '/indexer-proxy': {
         target: 'https://indexer.preprod.midnight.network',
         changeOrigin: true,
-        secure: true,
         rewrite: (path) => path.replace(/^\/indexer-proxy/, ''),
-        ws: true,
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            // Strip browser headers that trigger WAF/size-based rejection on the indexer
-            proxyReq.removeHeader('sec-ch-ua');
-            proxyReq.removeHeader('sec-ch-ua-mobile');
-            proxyReq.removeHeader('sec-ch-ua-platform');
-            proxyReq.removeHeader('sec-fetch-site');
-            proxyReq.removeHeader('sec-fetch-mode');
-            proxyReq.removeHeader('sec-fetch-dest');
-            proxyReq.removeHeader('origin');
-            proxyReq.removeHeader('referer');
-            proxyReq.setHeader('user-agent', 'midday-sdk/0.4.0');
-          });
-        },
       },
     },
   },

@@ -53,13 +53,9 @@ async function connectWallet() {
     const networkName = network === 'undeployed' ? 'local' : network;
 
     const baseConfig = Midday.Config.getNetworkConfig(networkName);
-    // Proxy indexer through Vite dev server to bypass CORS/WAF restrictions
+    // Proxy indexer through Vite to avoid browser CORS restrictions on preprod/preview
     const networkConfig = networkName !== 'local'
-      ? {
-          ...baseConfig,
-          indexer: `${window.location.origin}/indexer-proxy/api/v3/graphql`,
-          indexerWS: `${window.location.origin.replace(/^http/, 'ws')}/indexer-proxy/api/v3/graphql/ws`,
-        }
+      ? { ...baseConfig, indexer: `${window.location.origin}/indexer-proxy/api/v3/graphql` }
       : baseConfig;
 
     // Fee relay: use URL from input
@@ -120,7 +116,7 @@ async function deployContract() {
         timeout: 10 * 60 * 1000,
         onSubmit: ({ address, txId }) => {
           deployedAddress = address;
-          updateStatus(`TX submitted! Contract: ${address.slice(0, 16)}... TX: ${txId.slice(0, 16)}... — waiting for finalization...`);
+          updateStatus(`TX submitted! Contract: ${address} TX: ${txId.slice(0, 40)}... — waiting for finalization...`);
           // Pre-fill join input so user can join if finalization fails
           const joinInput = document.getElementById('join-address') as HTMLInputElement;
           if (joinInput) joinInput.value = address;
@@ -128,14 +124,17 @@ async function deployContract() {
       });
       updateStatus(`Contract deployed and finalized at: ${contract.address}`);
       updateCounter('0');
-    } catch {
+      return;
+    } catch (deployError) {
       if (deployedAddress) {
+        // TX was submitted but finalization watch failed (e.g. indexer WAF)
+        // The contract is on-chain — user can Join after it lands
         updateStatus(
-          `Contract submitted at: ${deployedAddress.slice(0, 16)}... (finalization watch failed — use Join to connect after tx lands)`,
+          `Contract TX submitted! Address: ${deployedAddress} — use Join to connect after tx is finalized on-chain`,
         );
-      } else {
-        throw new Error('Deploy failed before submission');
+        return;
       }
+      throw deployError;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -170,7 +169,7 @@ async function joinContract() {
 
     contract = await loaded.join(address);
 
-    updateStatus(`Joined contract at: ${contract.address.slice(0, 16)}...`);
+    updateStatus(`Joined contract at: ${contract.address}`);
     await readState();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
