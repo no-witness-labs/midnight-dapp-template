@@ -52,7 +52,15 @@ async function connectWallet() {
     const useFeeRelay = (document.getElementById('fee-relay-checkbox') as HTMLInputElement).checked;
     const networkName = network === 'undeployed' ? 'local' : network;
 
-    const networkConfig = Midday.Config.getNetworkConfig(networkName);
+    const baseConfig = Midday.Config.getNetworkConfig(networkName);
+    // Proxy indexer through Vite dev server to bypass CORS/WAF restrictions
+    const networkConfig = networkName !== 'local'
+      ? {
+          ...baseConfig,
+          indexer: `${window.location.origin}/indexer-proxy/api/v3/graphql`,
+          indexerWS: `${window.location.origin.replace(/^http/, 'ws')}/indexer-proxy/api/v3/graphql/ws`,
+        }
+      : baseConfig;
 
     // Fee relay: use URL from input
     let feeRelayConfig: { url: string } | undefined;
@@ -60,6 +68,8 @@ async function connectWallet() {
       const urlInput = document.getElementById('fee-relay-url') as HTMLInputElement;
       feeRelayConfig = { url: urlInput?.value.trim() || 'http://localhost:3002' };
     }
+
+    console.log('[dapp] networkConfig:', JSON.stringify(networkConfig, null, 2));
 
     client = await Midday.Client.create({
       networkConfig,
@@ -104,13 +114,67 @@ async function deployContract() {
     });
 
     updateStatus('Deploying contract...');
-    contract = await loaded.deploy();
-
-    updateStatus(`Contract deployed at: ${contract.address}`);
-    updateCounter('0');
+    let deployedAddress = '';
+    try {
+      contract = await loaded.deploy({
+        timeout: 10 * 60 * 1000,
+        onSubmit: ({ address, txId }) => {
+          deployedAddress = address;
+          updateStatus(`TX submitted! Contract: ${address.slice(0, 16)}... TX: ${txId.slice(0, 16)}... — waiting for finalization...`);
+          // Pre-fill join input so user can join if finalization fails
+          const joinInput = document.getElementById('join-address') as HTMLInputElement;
+          if (joinInput) joinInput.value = address;
+        },
+      });
+      updateStatus(`Contract deployed and finalized at: ${contract.address}`);
+      updateCounter('0');
+    } catch {
+      if (deployedAddress) {
+        updateStatus(
+          `Contract submitted at: ${deployedAddress.slice(0, 16)}... (finalization watch failed — use Join to connect after tx lands)`,
+        );
+      } else {
+        throw new Error('Deploy failed before submission');
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     updateStatus(`Deploy failed: ${message}`, true);
+  }
+}
+
+// Join an existing contract
+async function joinContract() {
+  if (!client) {
+    updateStatus('Not connected', true);
+    return;
+  }
+
+  const addressInput = document.getElementById('join-address') as HTMLInputElement;
+  const address = addressInput?.value.trim();
+  if (!address) {
+    updateStatus('Enter a contract address to join', true);
+    return;
+  }
+
+  try {
+    updateStatus('Joining contract...');
+
+    const zkConfigUrl = '/zk-config';
+
+    const loaded = await client.loadContract({
+      module: CounterContract,
+      zkConfig: new Midday.ZkConfig.HttpZkConfigProvider(zkConfigUrl),
+      privateStateId: `midnight-dapp-counter-${address.slice(0, 8)}`,
+    });
+
+    contract = await loaded.join(address);
+
+    updateStatus(`Joined contract at: ${contract.address.slice(0, 16)}...`);
+    await readState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    updateStatus(`Join failed: ${message}`, true);
   }
 }
 
@@ -233,6 +297,7 @@ connectBtn.addEventListener('click', connectWallet);
 
 // Export for global access (used by onclick in HTML)
 (window as unknown as { deployContract: typeof deployContract }).deployContract = deployContract;
+(window as unknown as { joinContract: typeof joinContract }).joinContract = joinContract;
 (window as unknown as { callAction: typeof callAction }).callAction = callAction;
 (window as unknown as { readState: typeof readState }).readState = readState;
 (window as unknown as { refreshBalance: typeof refreshBalance }).refreshBalance = refreshBalance;

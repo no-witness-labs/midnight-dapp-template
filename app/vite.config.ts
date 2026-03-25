@@ -106,13 +106,16 @@ export default defineConfig({
         __dirname,
         'node_modules/@midnight-ntwrk/compact-runtime/dist/index.js',
       ),
+      // Shim Node.js packages to browser natives
+      'isomorphic-ws': resolve(__dirname, 'src/isomorphic-ws-shim.ts'),
+      'cross-fetch': resolve(__dirname, 'src/cross-fetch-shim.ts'),
     },
   },
   optimizeDeps: {
     // WASM packages must be pre-bundled separately so vite-plugin-wasm can
     // process them (esbuild can't handle top-level-await WASM in require() chains).
     include: [
-      '@midnight-ntwrk/ledger-v7',
+      '@midnight-ntwrk/ledger-v8',
       '@midnight-ntwrk/compact-runtime',
     ],
     esbuildOptions: {
@@ -133,6 +136,18 @@ export default defineConfig({
             });
           },
         },
+        {
+          // Shim Node.js packages during pre-bundling
+          name: 'browser-shims',
+          setup(build) {
+            build.onResolve({ filter: /^cross-fetch$/ }, () => ({
+              path: resolve(__dirname, 'src/cross-fetch-shim.ts'),
+            }));
+            build.onResolve({ filter: /^isomorphic-ws$/ }, () => ({
+              path: resolve(__dirname, 'src/isomorphic-ws-shim.ts'),
+            }));
+          },
+        },
       ],
     },
   },
@@ -143,6 +158,29 @@ export default defineConfig({
         resolve(__dirname, '../contracts'),
         resolve(__dirname, '../../midday-sdk'),
       ],
+    },
+    proxy: {
+      '/indexer-proxy': {
+        target: 'https://indexer.preprod.midnight.network',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/indexer-proxy/, ''),
+        ws: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // Strip browser headers that trigger WAF/size-based rejection on the indexer
+            proxyReq.removeHeader('sec-ch-ua');
+            proxyReq.removeHeader('sec-ch-ua-mobile');
+            proxyReq.removeHeader('sec-ch-ua-platform');
+            proxyReq.removeHeader('sec-fetch-site');
+            proxyReq.removeHeader('sec-fetch-mode');
+            proxyReq.removeHeader('sec-fetch-dest');
+            proxyReq.removeHeader('origin');
+            proxyReq.removeHeader('referer');
+            proxyReq.setHeader('user-agent', 'midday-sdk/0.4.0');
+          });
+        },
+      },
     },
   },
 });

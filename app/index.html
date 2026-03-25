@@ -140,6 +140,10 @@
         <button class="action-btn" onclick="fundWallet()" style="background: #f59e0b;">Fund Wallet</button>
         <button class="action-btn" onclick="refreshBalance()" style="background: #8b5cf6;">Refresh Balance</button>
         <button class="action-btn" onclick="deployContract()">Deploy Contract</button>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;">
+          <input id="join-address" type="text" placeholder="Contract address (hex)" style="flex: 1; padding: 0.5rem; border-radius: 6px; border: 1px solid #d1d5db; font-family: monospace; font-size: 0.8rem;" />
+          <button class="action-btn" onclick="joinContract()" style="margin: 0;">Join</button>
+        </div>
         <button class="action-btn" onclick="callAction()">Increment</button>
         <button class="action-btn" onclick="readState()">Read State</button>
       </div>
